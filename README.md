@@ -57,24 +57,13 @@ npm run tauri dev
 
 ### 构建 Tauri 应用
 
-#### 构建 64 位版本（默认）
+详细的桌面版构建指南请参考 [BUILD_DESKTOP.md](./BUILD_DESKTOP.md)
+
+#### 快速构建（64位）
 
 ```bash
 npm run tauri build
 ```
-
-#### 构建 32 位版本
-
-```bash
-# 添加 32 位 Rust 目标
-rustup target add i686-pc-windows-msvc
-
-# 构建 32 位版本
-set TAURI_TRIPLE=i686-pc-windows-msvc
-npm run tauri build
-```
-
-详细的构建说明请参考 [BUILD.md](./BUILD.md)
 
 ## 项目结构
 
