@@ -1,0 +1,94 @@
+name: Build StudyFlow Desktop App
+
+# 触发条件：推送到main分支、创建PR、手动触发
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # 手动触发
+
+# 权限配置（用于上传产物、发布Release）
+permissions:
+  contents: write
+
+jobs:
+  # 第一步：代码校验（可选，提升代码质量）
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm' # 缓存npm依赖，加速构建
+      - name: Install npm dependencies
+        run: npm install
+      - name: Lint code (ESLint + TypeScript)
+        run: npm run lint # 需确保package.json中有lint脚本（如"lint": "eslint . --ext ts,tsx && tsc --noEmit"）
+
+  # 第二步：跨平台构建Tauri应用
+  build:
+    needs: lint # 依赖lint步骤完成（可选，去掉则不校验直接构建）
+    strategy:
+      fail-fast: false # 一个平台构建失败，不影响其他平台
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest] # 三平台
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. 配置Node.js环境（前端依赖）
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # 2. 配置Rust环境（Tauri后端）
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'windows-latest' && 'x86_64-pc-windows-msvc' || matrix.os == 'macos-latest' && 'x86_64-apple-darwin,aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
+
+      # 3. 安装系统级依赖（不同平台差异化）
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install webkit2gtk
+
+      # 4. 安装项目依赖
+      - name: Install npm dependencies
+        run: npm install
+
+      # 5. 构建Tauri应用
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub自动生成的令牌，无需手动配置
+        with:
+          tagName: v${{ github.ref_name }} # 版本号（如v1.0.0）
+          releaseName: "StudyFlow v${{ github.ref_name }}"
+          releaseBody: "自动构建的StudyFlow桌面应用安装包"
+          releaseDraft: true # 设为false则直接发布，true则为草稿
+          releasePrerelease: false
+
+  # 可选：上传构建产物为Artifact（方便临时下载）
+  upload-artifact:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: studyflow-builds
+          path: ./**/target/release/bundle/**
